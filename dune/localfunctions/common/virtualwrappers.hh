@@ -15,7 +15,7 @@ namespace Dune
 {
 
   // forward declaration needed by friend declarations
-  template<class Imp>
+  template<class Imp, int interfaceDiffOrder = Imp::Traits::LocalBasisType::Traits::diffOrder >
   class LocalFiniteElementVirtualImp;
 
   // default clone method is the copy constructor
@@ -75,7 +75,7 @@ namespace Dune
     : public virtual LocalBasisVirtualInterface<T>,
       public LocalBasisVirtualImp<typename LowerOrderLocalBasisTraits<T>::Traits,Imp>
   {
-    template<class FEImp>
+    template<class FEImp, int interfaceDiffOrder>
     friend class LocalFiniteElementVirtualImp;
 
     typedef LocalBasisVirtualImp<typename LowerOrderLocalBasisTraits<T>::Traits,Imp> Base;
@@ -108,10 +108,37 @@ namespace Dune
       //
       // Unfortunately not all compiler can determine Traits::diffOrder from the
       // type of the arument directions
-      impl_.template evaluate<Traits::diffOrder>(directions, in, out);
+      evaluateIfImplemented(directions, in, out);
     }
 
   protected:
+
+    // Be aware of the following trick needed to make SFINAE work:
+    //
+    // We know the exact type D, but without this template parameter the declaration is instanciated
+    // on instanciation of the class which fails due to the missing ::type if the condition of enable_if
+    // is false. To avoid this the template method and the enable_if expression must depend on an additional
+    // template parameter.
+    template<class D,
+      typename std::enable_if< (sizeof(D), (Traits::diffOrder<=Imp::Traits::diffOrder)), int>::type =0>
+    void evaluateIfImplemented(
+      const D& directions,
+      const typename Traits::DomainType& in,
+      std::vector<typename Traits::RangeType>& out) const
+    {
+      impl_.template evaluate<Traits::diffOrder>(directions, in, out);
+    }
+
+    template<class D,
+      typename std::enable_if< (sizeof(D), (Traits::diffOrder>Imp::Traits::diffOrder)), int>::type =0>
+    void evaluateIfImplemented(
+      const D& directions,
+      const typename Traits::DomainType& in,
+      std::vector<typename Traits::RangeType>& out) const
+    {
+      DUNE_THROW(NotImplemented, "LocalBasis implementation does not provide requested derivative order " << Traits::diffOrder);
+    }
+
     using Base::impl_;
 
   };
@@ -128,7 +155,7 @@ namespace Dune
   class LocalBasisVirtualImp<LocalBasisTraits<DF,n,D,RF,m,R,J,0>, Imp>
     : public virtual LocalBasisVirtualInterface<LocalBasisTraits<DF,n,D,RF,m,R,J,0> >
   {
-    template<class FEImp>
+    template<class FEImp, int interfaceDiffOrder>
     friend class LocalFiniteElementVirtualImp;
 
   protected:
@@ -201,7 +228,7 @@ namespace Dune
   class LocalInterpolationVirtualImp
     : public LocalInterpolationVirtualInterface< DomainType, RangeType >
   {
-    template<class FEImp>
+    template<class FEImp, int interfaceDiffOrder>
     friend class LocalFiniteElementVirtualImp;
 
     typedef LocalInterpolationVirtualInterface< DomainType, RangeType > Base;
@@ -245,7 +272,7 @@ namespace Dune
   class LocalCoefficientsVirtualImp
     : public LocalCoefficientsVirtualInterface
   {
-    template<class FEImp>
+    template<class FEImp, int interfaceDiffOrder>
     friend class LocalFiniteElementVirtualImp;
 
   protected:
@@ -284,15 +311,19 @@ namespace Dune
    * @brief class for wrapping a finite element using the virtual interface
    *
    * This automatically inherits the differentiation order of the wrapped
-   * finite element and implements the corresponding interface
+   * finite element and implements the corresponding interface.
+   * Note the the implementation does not need to provide the same differentiability
+   * order as the interface. If higher order derivatives are not provided by the
+   * implementation, the wrapper will throw an exception.
    *
    * @tparam Imp LocalBasisInterface implementation
+   * @tparam interfaceDiffOrder Differentiablity order of interface, defaults to diffOrder of Imp
    */
-  template<class Imp>
+  template<class Imp, int interfaceDiffOrder>
   class LocalFiniteElementVirtualImp
-    : public virtual LocalFiniteElementVirtualInterface<typename Imp::Traits::LocalBasisType::Traits>
+    : public virtual LocalFiniteElementVirtualInterface<typename FixedOrderLocalBasisTraits<typename Imp::Traits::LocalBasisType::Traits, interfaceDiffOrder>::Traits >
   {
-    typedef typename Imp::Traits::LocalBasisType::Traits T;
+    typedef typename FixedOrderLocalBasisTraits<typename Imp::Traits::LocalBasisType::Traits, interfaceDiffOrder>::Traits T;
     typedef LocalFiniteElementVirtualInterface<T> Interface;
 
   public:
