@@ -23,6 +23,7 @@ namespace Dune
     //! \brief Make set numer s, where 0<=s<8
     RT02DLocalInterpolation (unsigned int s)
     {
+      using std::sqrt;
       sign0 = sign1 = sign2 = 1.0;
       if (s&1) sign0 *= -1.0;
       if (s&2) sign1 *= -1.0;
